@@ -2,24 +2,29 @@
 
 import streamlit as st
 import pandas as pd
-from openai import OpenAI
+# CAMBIO: Importamos la librería de Google en lugar de la de OpenAI
+import google.generativeai as genai
 import json
 from io import BytesIO
 
 # --- Configuración de la Página ---
-st.set_page_config(page_title="Generador de Matrices PUO", layout="wide")
+st.set_page_config(page_title="Generador de Matrices con Gemini", layout="wide")
 
 # --- Título de la Aplicación ---
-st.title("Generador Automático de Matrices de Diagnóstico y PUO")
+st.title("Generador Automático de Matrices con Gemini Flash")
 st.write("Sube transcripciones de entrevistas para generar una matriz de diagnóstico y luego una matriz PUO.")
 
 # --- Manejo Seguro de la Clave API ---
-# Intenta obtener la clave desde los secrets de Streamlit (para despliegue)
+# CAMBIO: Buscamos la clave de API de Google en los secrets
 try:
-    api_key = st.secrets["OPENAI_API_KEY"]
+    api_key = st.secrets["GOOGLE_API_KEY"]
 except KeyError:
-    st.warning("Clave de API no encontrada en los secrets. Por favor, ingrésala manualmente para uso local.")
-    api_key = st.text_input("Ingresa tu clave de API de OpenAI", type="password")
+    st.warning("Clave de API de Google no encontrada. Por favor, ingrésala manualmente para uso local.")
+    api_key = st.text_input("Ingresa tu clave de API de Google AI", type="password")
+
+# CAMBIO: Configuramos la API de Google
+if api_key:
+    genai.configure(api_key=api_key)
 
 # --- Paso 1: Matriz de Diagnóstico ---
 with st.container(border=True):
@@ -34,27 +39,27 @@ with st.container(border=True):
     prompt_diagnostico = st.text_area(
         "Prompt para generar la Matriz de Diagnóstico:",
         height=150,
-        value="A partir de las siguientes entrevistas, extrae los principales procesos, actividades y problemas mencionados. Organiza la información en un formato JSON con una lista de objetos, donde cada objeto tenga las claves: 'Proceso', 'Actividad', 'Problema'."
+        value="A partir de las siguientes entrevistas, extrae los principales procesos, actividades y problemas mencionados. Organiza la información en un formato JSON con una lista de objetos, donde cada objeto tenga las claves: 'Proceso', 'Actividad', 'Problema'. Asegúrate de que la respuesta sea únicamente el código JSON válido y nada más."
     )
 
     if st.button("Generar Matriz de Diagnóstico"):
         if uploaded_files and api_key and prompt_diagnostico:
-            with st.spinner("Procesando entrevistas y generando la matriz de diagnóstico..."):
+            with st.spinner("Procesando entrevistas con Gemini Flash..."):
                 all_text = ""
                 for uploaded_file in uploaded_files:
                     all_text += uploaded_file.read().decode("utf-8") + "\n\n"
 
-                client = OpenAI(api_key=api_key)
                 try:
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "Eres un asistente que extrae información de textos y la estructura en formato JSON."},
-                            {"role": "user", "content": f"{prompt_diagnostico}\n\nEntrevistas:\n{all_text}"}
-                        ]
-                    )
+                    # CAMBIO: Lógica para llamar a la API de Gemini
+                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                    # Creamos el contenido completo que enviaremos al modelo
+                    full_prompt = f"{prompt_diagnostico}\n\nEntrevistas:\n{all_text}"
                     
-                    json_response = json.loads(response.choices[0].message.content)
+                    response = model.generate_content(full_prompt)
+                    
+                    # Limpiamos la respuesta para asegurar que es solo JSON
+                    cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+                    json_response = json.loads(cleaned_response)
                     df_diagnostico = pd.DataFrame(json_response)
                     
                     st.session_state['df_diagnostico'] = df_diagnostico
@@ -63,6 +68,7 @@ with st.container(border=True):
 
                 except Exception as e:
                     st.error(f"Ocurrió un error al generar la matriz de diagnóstico: {e}")
+                    st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
         else:
             st.warning("Asegúrate de subir archivos, tener una clave de API válida y un prompt.")
 
@@ -77,25 +83,23 @@ with st.container(border=True):
         prompt_puo = st.text_area(
             "Prompt para generar la Matriz PUO:",
             height=150,
-            value="A partir de la siguiente matriz de diagnóstico en formato JSON, crea una matriz PUO. Identifica el problema principal, el usuario afectado y define un objetivo claro de mejora. Devuelve el resultado en un formato JSON con una lista de objetos, donde cada objeto tenga las claves: 'Problema', 'Usuario Afectado', 'Objetivo de Mejora'."
+            value="A partir de la siguiente matriz de diagnóstico en formato JSON, crea una matriz PUO. Identifica el problema principal, el usuario afectado y define un objetivo claro de mejora. Devuelve el resultado en un formato JSON con una lista de objetos, donde cada objeto tenga las claves: 'Problema', 'Usuario Afectado', 'Objetivo de Mejora'. Asegúrate de que la respuesta sea únicamente el código JSON válido."
         )
 
         if st.button("Generar Matriz PUO"):
             if api_key and prompt_puo:
-                with st.spinner("Generando la matriz PUO..."):
+                with st.spinner("Generando la matriz PUO con Gemini Flash..."):
                     diagnostico_json = st.session_state['df_diagnostico'].to_json(orient='records')
                     
-                    client = OpenAI(api_key=api_key)
                     try:
-                        response = client.chat.completions.create(
-                            model="gpt-3.5-turbo",
-                            messages=[
-                                {"role": "system", "content": "Eres un asistente que transforma datos de diagnóstico en una matriz PUO en formato JSON."},
-                                {"role": "user", "content": f"{prompt_puo}\n\nMatriz de Diagnóstico:\n{diagnostico_json}"}
-                            ]
-                        )
+                        # CAMBIO: Lógica para llamar a la API de Gemini
+                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                        full_prompt_puo = f"{prompt_puo}\n\nMatriz de Diagnóstico:\n{diagnostico_json}"
                         
-                        json_response_puo = json.loads(response.choices[0].message.content)
+                        response = model.generate_content(full_prompt_puo)
+                        
+                        cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+                        json_response_puo = json.loads(cleaned_response)
                         df_puo = pd.DataFrame(json_response_puo)
                         
                         st.session_state['df_puo'] = df_puo
@@ -104,6 +108,7 @@ with st.container(border=True):
 
                     except Exception as e:
                         st.error(f"Ocurrió un error al generar la matriz PUO: {e}")
+                        st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
             else:
                 st.warning("Asegúrate de tener una clave de API válida y un prompt.")
 
@@ -112,7 +117,6 @@ if 'df_diagnostico' in st.session_state and 'df_puo' in st.session_state:
     st.header("Paso 3: Descargar Resultados")
     
     output = BytesIO()
-    # Usar 'xlsxwriter' como motor para crear el archivo Excel en memoria
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         st.session_state['df_diagnostico'].to_excel(writer, sheet_name='Matriz_Diagnostico', index=False)
         st.session_state['df_puo'].to_excel(writer, sheet_name='Matriz_PUO', index=False)
