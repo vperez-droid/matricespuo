@@ -2,10 +2,13 @@
 
 import streamlit as st
 import pandas as pd
-# CAMBIO: Importamos la librería de Google en lugar de la de OpenAI
 import google.generativeai as genai
 import json
 from io import BytesIO
+
+# CAMBIO: Importamos las nuevas bibliotecas para leer PDF y DOCX
+from pypdf import PdfReader
+import docx
 
 # --- Configuración de la Página ---
 st.set_page_config(page_title="Generador de Matrices con Gemini", layout="wide")
@@ -14,25 +17,51 @@ st.set_page_config(page_title="Generador de Matrices con Gemini", layout="wide")
 st.title("Generador Automático de Matrices con Gemini Flash")
 st.write("Sube transcripciones de entrevistas para generar una matriz de diagnóstico y luego una matriz PUO.")
 
-# --- Manejo Seguro de la Clave API ---
-# CAMBIO: Buscamos la clave de API de Google en los secrets
-try:
+# --- Manejo Seguro y Definitivo de la Clave API ---
+def check_api_key():
+    if "GOOGLE_API_KEY" not in st.secrets or not st.secrets["GOOGLE_API_KEY"]:
+        st.error("🚨 ¡Error de configuración! La GOOGLE_API_KEY no se ha encontrado en los secrets de Streamlit.")
+        st.info("Por favor, ve a la configuración de la app (Settings -> Secrets) y añade tu clave de API de Google para que la aplicación funcione.")
+        st.stop()
     api_key = st.secrets["GOOGLE_API_KEY"]
-except KeyError:
-    st.warning("Clave de API de Google no encontrada. Por favor, ingrésala manualmente para uso local.")
-    api_key = st.text_input("Ingresa tu clave de API de Google AI", type="password")
-
-# CAMBIO: Configuramos la API de Google
-if api_key:
     genai.configure(api_key=api_key)
+
+check_api_key()
+
+# CAMBIO: Creamos una función para extraer texto de diferentes tipos de archivo
+def get_text_from_file(uploaded_file):
+    """
+    Extrae el texto de un archivo subido (txt, pdf, docx).
+    """
+    text = ""
+    try:
+        file_name = uploaded_file.name
+        if file_name.endswith('.txt'):
+            # Lee el archivo de texto como bytes y lo decodifica
+            text = uploaded_file.read().decode("utf-8")
+        elif file_name.endswith('.pdf'):
+            # Lee el archivo PDF
+            pdf_reader = PdfReader(uploaded_file)
+            for page in pdf_reader.pages:
+                text += page.extract_text() or ""
+        elif file_name.endswith('.docx'):
+            # Lee el archivo Word
+            document = docx.Document(uploaded_file)
+            for para in document.paragraphs:
+                text += para.text + "\n"
+    except Exception as e:
+        st.error(f"Error al leer el archivo {uploaded_file.name}: {e}")
+        return None
+    return text
 
 # --- Paso 1: Matriz de Diagnóstico ---
 with st.container(border=True):
     st.header("Paso 1: Cargar Entrevistas y Generar Matriz de Diagnóstico")
 
+    # CAMBIO: Actualizamos los tipos de archivo permitidos en el uploader
     uploaded_files = st.file_uploader(
-        "Sube las transcripciones de las entrevistas (archivos .txt)",
-        type=["txt"],
+        "Sube las transcripciones (archivos .txt, .pdf, .docx)",
+        type=["txt", "pdf", "docx"],
         accept_multiple_files=True
     )
 
@@ -43,35 +72,38 @@ with st.container(border=True):
     )
 
     if st.button("Generar Matriz de Diagnóstico"):
-        if uploaded_files and api_key and prompt_diagnostico:
+        if uploaded_files and prompt_diagnostico:
             with st.spinner("Procesando entrevistas con Gemini Flash..."):
                 all_text = ""
+                # CAMBIO: Usamos nuestra nueva función para leer cada archivo
                 for uploaded_file in uploaded_files:
-                    all_text += uploaded_file.read().decode("utf-8") + "\n\n"
+                    st.write(f"Leyendo archivo: {uploaded_file.name}...")
+                    extracted_text = get_text_from_file(uploaded_file)
+                    if extracted_text:
+                        all_text += extracted_text + "\n\n---\n\n" # Separador entre documentos
+                
+                if all_text:
+                    try:
+                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                        full_prompt = f"{prompt_diagnostico}\n\nEntrevistas:\n{all_text}"
+                        
+                        response = model.generate_content(full_prompt)
+                        
+                        cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+                        json_response = json.loads(cleaned_response)
+                        df_diagnostico = pd.DataFrame(json_response)
+                        
+                        st.session_state['df_diagnostico'] = df_diagnostico
+                        st.success("Matriz de Diagnóstico generada con éxito.")
+                        st.dataframe(df_diagnostico)
 
-                try:
-                    # CAMBIO: Lógica para llamar a la API de Gemini
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                    # Creamos el contenido completo que enviaremos al modelo
-                    full_prompt = f"{prompt_diagnostico}\n\nEntrevistas:\n{all_text}"
-                    
-                    response = model.generate_content(full_prompt)
-                    
-                    # Limpiamos la respuesta para asegurar que es solo JSON
-                    cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
-                    json_response = json.loads(cleaned_response)
-                    df_diagnostico = pd.DataFrame(json_response)
-                    
-                    st.session_state['df_diagnostico'] = df_diagnostico
-                    st.success("Matriz de Diagnóstico generada con éxito.")
-                    st.dataframe(df_diagnostico)
-
-                except Exception as e:
-                    st.error(f"Ocurrió un error al generar la matriz de diagnóstico: {e}")
-                    st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
+                    except Exception as e:
+                        st.error(f"Ocurrió un error al generar la matriz de diagnóstico: {e}")
+                        st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
         else:
-            st.warning("Asegúrate de subir archivos, tener una clave de API válida y un prompt.")
+            st.warning("Asegúrate de subir al menos un archivo y de que el prompt no esté vacío.")
 
+# ... El resto del código para el Paso 2 y la descarga permanece exactamente igual ...
 # --- Paso 2: Matriz PUO ---
 with st.container(border=True):
     st.header("Paso 2: Generar Matriz PUO")
@@ -87,12 +119,11 @@ with st.container(border=True):
         )
 
         if st.button("Generar Matriz PUO"):
-            if api_key and prompt_puo:
+            if prompt_puo:
                 with st.spinner("Generando la matriz PUO con Gemini Flash..."):
                     diagnostico_json = st.session_state['df_diagnostico'].to_json(orient='records')
                     
                     try:
-                        # CAMBIO: Lógica para llamar a la API de Gemini
                         model = genai.GenerativeModel('gemini-1.5-flash-latest')
                         full_prompt_puo = f"{prompt_puo}\n\nMatriz de Diagnóstico:\n{diagnostico_json}"
                         
@@ -110,20 +141,10 @@ with st.container(border=True):
                         st.error(f"Ocurrió un error al generar la matriz PUO: {e}")
                         st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
             else:
-                st.warning("Asegúrate de tener una clave de API válida y un prompt.")
+                st.warning("Asegúrate de que el prompt para la matriz PUO no esté vacío.")
 
 # --- Descarga del Archivo Excel ---
 if 'df_diagnostico' in st.session_state and 'df_puo' in st.session_state:
     st.header("Paso 3: Descargar Resultados")
     
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        st.session_state['df_diagnostico'].to_excel(writer, sheet_name='Matriz_Diagnostico', index=False)
-        st.session_state['df_puo'].to_excel(writer, sheet_name='Matriz_PUO', index=False)
-    
-    st.download_button(
-        label="📥 Descargar Matrices en Excel",
-        data=output.getvalue(),
-        file_name="matrices_generadas.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    out
