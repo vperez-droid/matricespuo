@@ -1,3 +1,5 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
@@ -41,24 +43,8 @@ def get_text_from_file(uploaded_file):
         return None
     return text
 
-# --- Interfaz de la Aplicación ---
-with st.container(border=True):
-    st.header("Paso 1: Cargar las Entrevistas")
-    
-    files_entrevistas = st.file_uploader(
-        "Sube uno o más archivos de entrevistas (.txt, .pdf, .docx)",
-        type=["txt", "pdf", "docx"],
-        accept_multiple_files=True
-    )
-
-with st.container(border=True):
-    st.header("Paso 2: Generar la Lista de Actividades")
-    
-    # TU PROMPT ADAPTADO
-    prompt_base = st.text_area(
-        "Prompt para generar la lista de actividades:",
-        height=300,
-        value="""Analiza todas las transcripciones de entrevistas proporcionadas.
+# --- CAMBIO: El prompt ahora está "oculto" en el backend como una variable fija ---
+prompt_fijo = """Analiza todas las transcripciones de entrevistas proporcionadas.
 Identifica y lista todos los procesos de negocio mencionados.
 
 IMPORTANTE: SOLO PROCESOS DE NEGOCIO DE LA EMPRESA EXISTENTES. NO PROPUESTAS DE MEJORA O PROBLEMAS MENCIONADOS.
@@ -76,8 +62,21 @@ IMPORTANTE: Ordena los procesos y actividades según el orden de la cadena de va
 *   Repite el nombre del proceso en la clave "Proceso" para cada actividad que le pertenezca.
 *   La clave "Número" debe ser una secuencia numérica continua.
 *   No incluyas ninguna explicación adicional, solo el resultado JSON."""
+
+# --- Interfaz de la Aplicación ---
+with st.container(border=True):
+    st.header("Paso 1: Cargar las Entrevistas")
+    
+    files_entrevistas = st.file_uploader(
+        "Sube uno o más archivos de entrevistas (.txt, .pdf, .docx)",
+        type=["txt", "pdf", "docx"],
+        accept_multiple_files=True
     )
 
+with st.container(border=True):
+    st.header("Paso 2: Generar la Lista de Actividades")
+    
+    # CAMBIO: El cuadro de texto se ha eliminado. Ahora solo hay un botón.
     if st.button("Generar Lista de Actividades", type="primary"):
         if files_entrevistas:
             with st.spinner("Analizando entrevistas y generando la lista..."):
@@ -85,7 +84,8 @@ IMPORTANTE: Ordena los procesos y actividades según el orden de la cadena de va
                 for file in files_entrevistas:
                     texto_entrevistas += get_text_from_file(file) + "\n\n---\n\n"
 
-                full_prompt = f"{prompt_base}\n\n--- INICIO ENTREVISTAS ---\n{texto_entrevistas}\n--- FIN ENTREVISTAS ---"
+                # Usamos la variable 'prompt_fijo' que definimos arriba
+                full_prompt = f"{prompt_fijo}\n\n--- INICIO ENTREVISTAS ---\n{texto_entrevistas}\n--- FIN ENTREVISTAS ---"
                 
                 try:
                     model = genai.GenerativeModel('gemini-2.5-flash')
@@ -104,7 +104,7 @@ IMPORTANTE: Ordena los procesos y actividades según el orden de la cadena de va
                     st.error(f"Ocurrió un error al generar la lista: {e}")
                     st.error(f"Respuesta recibida del modelo: {response.text if 'response' in locals() else 'No response'}")
         else:
-            st.warning("Por favor, sube al menos un archivo de entrevista.")
+            st.warning("Por favor, sube al menos un archivo de entrevista en el Paso 1.")
 
 # --- Descarga del Archivo Excel ---
 if 'df_resultado' in st.session_state:
