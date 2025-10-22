@@ -3,5 +3,6 @@ pandas
 google-generativeai
 openpyxl
 xlsxwriter
-pypdf             # <-- AÑADIR: Para leer archivos PDF
-python-docx       # <-- AÑADIR: Para leer archivos .docx
+pypdf
+python-docx
+Pillow            # <-- AÑADIR: Para manejar archivos de imagen
