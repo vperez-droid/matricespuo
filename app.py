@@ -97,7 +97,7 @@ with st.container(border=True):
                 
                 try:
                     # CORRECCIÓN 1: Usamos el nombre de modelo estándar
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(full_prompt)
                     
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
