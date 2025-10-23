@@ -53,7 +53,37 @@ def get_content_from_file(uploaded_file):
     return None
 
 # --- Prompt Fijo para el Paso 1 ---
-prompt_actividades = """(Aquí va tu prompt completo para generar la lista de actividades)"""
+prompt_actividades = """
+**Objetivo:** Extraer una lista de actividades detalladas a partir de las transcripciones de las entrevistas y formatearlas en una estructura JSON.
+
+**Instrucciones Estrictas:**
+1.  **Analiza el texto de las entrevistas** que te proporciono a continuación.
+2.  **Identifica cada tarea o actividad individual** que se menciona.
+3.  **Crea un objeto JSON para cada actividad.**
+4.  Cada objeto JSON debe tener TRES claves obligatorias:
+    *   `"Proceso"`: El proceso de negocio general al que pertenece la actividad (ej: "Captación de Clientes", "Proceso Judicial", "Facturación").
+    *   `"Número"`: Un número secuencial para la actividad, empezando en 1.
+    *   `"Grandes actividades del proceso"`: La descripción específica de la tarea (ej: "Revisar el correo electrónico", "Presentar la demanda", "Emitir facturas").
+
+**Formato de Salida Obligatorio:**
+*   Tu respuesta debe ser **EXCLUSIVAMENTE un array JSON válido** que contenga los objetos.
+*   No incluyas texto introductorio, explicaciones, ni la palabra "json" o las marcas ```.
+*   La salida debe empezar con `[` y terminar con `]`.
+
+**Ejemplo de cómo debe ser la salida:**
+[
+  {
+    "Proceso": "Captación de Clientes y Gestión de Leads",
+    "Número": 1,
+    "Grandes actividades del proceso": "Actuar como primer filtro para determinar la viabilidad y perfil del cliente."
+  },
+  {
+    "Proceso": "Captación de Clientes y Gestión de Leads",
+    "Número": 2,
+    "Grandes actividades del proceso": "Obtener la documentación solicitada al cliente."
+  }
+]
+"""
 
 # --- Interfaz de la Aplicación ---
 
