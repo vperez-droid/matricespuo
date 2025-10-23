@@ -71,7 +71,7 @@ prompt_actividades = """
 *   La salida debe empezar con `[` y terminar con `]`.
 """
 
-# --- CAMBIO 2: Movemos el prompt del Paso 2 aquí para que sea fijo ---
+# --- Prompt Fijo para el Paso 2 ---
 prompt_responsabilidades = """
 **Objetivo Principal:**
 Crear una matriz de responsabilidades en formato JSON. Debes usar la lista de actividades proporcionada como base y rellenarla usando la información de las entrevistas.
@@ -126,22 +126,24 @@ with st.container(border=True):
                 try:
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(f"{prompt_actividades}\n\n--- ENTREVISTAS ---\n{texto_entrevistas}")
-                    
-                    # --- CAMBIO 1: Eliminamos la respuesta en crudo que usábamos para depurar ---
-                    # st.info("Respuesta recibida del modelo:")
-                    # st.text(response.text)
-
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
                     
                     if not cleaned_response:
                         st.error("Error: El modelo devolvió una respuesta vacía.")
                     else:
+                        # --- INICIO DEL BLOQUE SEGURO ---
+                        # Todo el código que depende de una respuesta válida va aquí dentro.
                         json_data = json.loads(cleaned_response)
+                        df_actividades = pd.DataFrame(json_data)
+                        
+                        # Re-numerar la columna 'Número' para que sea continua
                         df_actividades['Número'] = df_actividades.index + 1
                         
+                        # Guardar en la sesión y mostrar al usuario
                         st.session_state['df_actividades'] = df_actividades
                         st.success("¡Paso 1 completado! Lista de actividades generada.")
                         st.dataframe(df_actividades)
+                        # --- FIN DEL BLOQUE SEGURO ---
 
                 except json.JSONDecodeError as e:
                     st.error(f"Error al procesar el JSON: {e}")
@@ -162,15 +164,13 @@ if 'df_actividades' in st.session_state:
             type=["jpg", "jpeg", "png", "pdf", "docx", "txt", "xlsx", "xls", "csv"]
         )
 
-        # --- CAMBIO 2: Eliminamos el st.text_area para que el prompt no sea visible/editable ---
-
         if st.button("Generar Matriz de Responsabilidades", type="primary"):
             with st.spinner("Creando la Matriz de Responsabilidades..."):
                 texto_entrevistas = st.session_state['texto_entrevistas']
                 actividades_json = st.session_state['df_actividades'].to_json(orient='records')
                 
                 prompt_parts = [
-                    prompt_responsabilidades, # Ahora usa la variable fija definida arriba
+                    prompt_responsabilidades,
                     "\n\n--- LISTA DE ACTIVIDADES ---\n", actividades_json,
                     "\n\n--- ENTREVISTAS ---\n", texto_entrevistas
                 ]
