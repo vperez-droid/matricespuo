@@ -137,7 +137,7 @@ with st.container(border=True):
                         st.error("Error: El modelo devolvió una respuesta vacía.")
                     else:
                         json_data = json.loads(cleaned_response)
-                        df_actividades = pd.DataFrame(json_data)
+                        df_actividades['Número'] = df_actividades.index + 1
                         
                         st.session_state['df_actividades'] = df_actividades
                         st.success("¡Paso 1 completado! Lista de actividades generada.")
