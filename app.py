@@ -7,7 +7,7 @@ import json
 from io import BytesIO
 from pypdf import PdfReader
 import docx
-from PIL import Image # <-- AÑADIR: Importamos la librería de imágenes
+from PIL import Image
 
 # --- Configuración de la Página ---
 st.set_page_config(page_title="Analizador de Procesos", layout="wide")
@@ -46,15 +46,31 @@ def get_content_from_file(uploaded_file):
             for para in document.paragraphs: text += para.text + "\n"
             return text
         elif file_name.endswith(('.xlsx', '.xls', '.csv')):
-            # Leemos el excel/csv y lo convertimos a texto plano para la IA
             df = pd.read_excel(uploaded_file) if file_name.endswith(('.xlsx', '.xls')) else pd.read_csv(uploaded_file)
             return df.to_string()
     except Exception as e:
         st.error(f"Error al leer el archivo {uploaded_file.name}: {e}")
     return None
 
-# --- Prompt Fijo para el Paso 1 ---
-prompt_actividades = """Analiza todas las transcripciones de entrevistas proporcionadas... (tu prompt completo va aquí)"""
+# --- Prompt Fijo para el Paso 1 (Rellenado con tu prompt) ---
+prompt_actividades = """Analiza todas las transcripciones de entrevistas proporcionadas.
+Identifica y lista todos los procesos de negocio mencionados.
+
+IMPORTANTE: SOLO PROCESOS DE NEGOCIO DE LA EMPRESA EXISTENTES. NO PROPUESTAS DE MEJORA O PROBLEMAS MENCIONADOS.
+Para cada proceso, detalla las actividades específicas asociadas a él que se realizan actualmente. Ignora cualquier sugerencia de mejora o problemas, céntrate solo en las actividades que sí se hacen.
+
+El objetivo es crear una lista maestra de todas las actividades de la empresa, agrupadas por su proceso principal. La primera actividad de cada proceso debe ser la que lo inicia y la última con la que se finaliza.
+No debes añadir nombres de las personas.
+
+IMPORTANTE: Ordena los procesos y actividades según el orden de la cadena de valor de la empresa, y al final, los procesos transversales (administración, finanzas, etc.).
+
+**Formato de Salida Requerido:**
+*   **Exclusivamente JSON.**
+*   La salida debe ser una lista de objetos JSON.
+*   Cada objeto representa una actividad y debe tener tres claves: "Proceso", "Número", y "Grandes actividades del proceso".
+*   Repite el nombre del proceso en la clave "Proceso" para cada actividad que le pertenezca.
+*   La clave "Número" debe ser una secuencia numérica continua.
+*   No incluyas ninguna explicación adicional, solo el resultado JSON."""
 
 # --- Interfaz de la Aplicación ---
 
@@ -75,13 +91,13 @@ with st.container(border=True):
                 for file in files_entrevistas:
                     texto_entrevistas += get_content_from_file(file) + "\n\n---\n\n"
                 
-                # Guardamos las entrevistas en el estado de la sesión para usarlas en el Paso 2
                 st.session_state['texto_entrevistas'] = texto_entrevistas
 
                 full_prompt = f"{prompt_actividades}\n\n--- INICIO ENTREVISTAS ---\n{texto_entrevistas}\n--- FIN ENTREVISTAS ---"
                 
                 try:
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                    # CORRECCIÓN 1: Usamos el nombre de modelo estándar
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     response = model.generate_content(full_prompt)
                     
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
@@ -123,11 +139,9 @@ Para cada actividad de la lista, analiza las entrevistas para:
 
         if st.button("Generar Matriz PUO", type="primary"):
             with st.spinner("Creando la Matriz PUO..."):
-                # Recuperamos los datos necesarios del estado de la sesión
                 texto_entrevistas = st.session_state['texto_entrevistas']
                 actividades_json = st.session_state['df_actividades'].to_json(orient='records')
                 
-                # Preparamos el contenido para Gemini (puede ser texto o imagen)
                 prompt_parts = [
                     prompt_puo,
                     "\n\n--- LISTA DE ACTIVIDADES BASE ---\n",
@@ -136,7 +150,6 @@ Para cada actividad de la lista, analiza las entrevistas para:
                     texto_entrevistas
                 ]
 
-                # Añadimos el organigrama si el usuario lo subió
                 if file_organigrama:
                     contenido_organigrama = get_content_from_file(file_organigrama)
                     if contenido_organigrama:
@@ -144,6 +157,7 @@ Para cada actividad de la lista, analiza las entrevistas para:
                         prompt_parts.append(contenido_organigrama)
 
                 try:
+                    # CORRECCIÓN 2: Usamos el nombre de modelo correcto aquí también
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(prompt_parts)
 
