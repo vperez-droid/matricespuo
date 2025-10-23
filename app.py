@@ -81,16 +81,31 @@ with st.container(border=True):
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(f"{prompt_actividades}\n\n--- ENTREVISTAS ---\n{texto_entrevistas}")
                     
-                    cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
-                    json_data = json.loads(cleaned_response)
-                    df_actividades = pd.DataFrame(json_data)
-                    
-                    st.session_state['df_actividades'] = df_actividades
-                    st.success("¡Paso 1 completado! Lista de actividades generada.")
-                    st.dataframe(df_actividades)
+                    # CAMBIO 1: Mostrar la respuesta cruda del modelo para depuración
+                    st.info("Respuesta recibida del modelo:")
+                    st.text(response.text)
 
-                except Exception as e: st.error(f"Ocurrió un error en el Paso 1: {e}")
-        else: st.warning("Por favor, sube al menos un archivo de entrevista.")
+                    cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
+                    
+                    # CAMBIO 2: Verificar si la respuesta está vacía antes de intentar procesarla
+                    if not cleaned_response:
+                        st.error("Error: El modelo devolvió una respuesta vacía.")
+                    else:
+                        json_data = json.loads(cleaned_response)
+                        df_actividades = pd.DataFrame(json_data)
+                        
+                        st.session_state['df_actividades'] = df_actividades
+                        st.success("¡Paso 1 completado! Lista de actividades generada.")
+                        st.dataframe(df_actividades)
+
+                # CAMBIO 3: Capturar el error de JSON de forma más específica
+                except json.JSONDecodeError as e:
+                    st.error(f"Error al procesar el JSON: {e}")
+                    st.error("La respuesta del modelo (mostrada arriba) no es un JSON válido.")
+                except Exception as e: 
+                    st.error(f"Ocurrió un error inesperado en el Paso 1: {e}")
+        else: 
+            st.warning("Por favor, sube al menos un archivo de entrevista.")
 
 
 # --- PASO 2: GENERAR MATRIZ DE RESPONSABILIDADES ---
