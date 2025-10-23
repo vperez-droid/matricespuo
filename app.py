@@ -14,7 +14,7 @@ st.set_page_config(page_title="Analizador de Procesos", layout="wide")
 
 # --- Título de la Aplicación ---
 st.title("Herramienta de Análisis y Diagnóstico de Procesos")
-st.write("Genera una lista de actividades a partir de entrevistas y luego crea una Matriz PUO de diagnóstico.")
+st.write("Genera una lista de actividades a partir de entrevistas y luego crea una Matriz de Responsabilidades.")
 
 # --- Manejo Seguro de la Clave API ---
 def check_api_key():
@@ -52,25 +52,8 @@ def get_content_from_file(uploaded_file):
         st.error(f"Error al leer el archivo {uploaded_file.name}: {e}")
     return None
 
-# --- Prompt Fijo para el Paso 1 (Rellenado con tu prompt) ---
-prompt_actividades = """Analiza todas las transcripciones de entrevistas proporcionadas.
-Identifica y lista todos los procesos de negocio mencionados.
-
-IMPORTANTE: SOLO PROCESOS DE NEGOCIO DE LA EMPRESA EXISTENTES. NO PROPUESTAS DE MEJORA O PROBLEMAS MENCIONADOS.
-Para cada proceso, detalla las actividades específicas asociadas a él que se realizan actualmente. Ignora cualquier sugerencia de mejora o problemas, céntrate solo en las actividades que sí se hacen.
-
-El objetivo es crear una lista maestra de todas las actividades de la empresa, agrupadas por su proceso principal. La primera actividad de cada proceso debe ser la que lo inicia y la última con la que se finaliza.
-No debes añadir nombres de las personas.
-
-IMPORTANTE: Ordena los procesos y actividades según el orden de la cadena de valor de la empresa, y al final, los procesos transversales (administración, finanzas, etc.).
-
-**Formato de Salida Requerido:**
-*   **Exclusivamente JSON.**
-*   La salida debe ser una lista de objetos JSON.
-*   Cada objeto representa una actividad y debe tener tres claves: "Proceso", "Número", y "Grandes actividades del proceso".
-*   Repite el nombre del proceso en la clave "Proceso" para cada actividad que le pertenezca.
-*   La clave "Número" debe ser una secuencia numérica continua.
-*   No incluyas ninguna explicación adicional, solo el resultado JSON."""
+# --- Prompt Fijo para el Paso 1 ---
+prompt_actividades = """(Aquí va tu prompt completo para generar la lista de actividades)"""
 
 # --- Interfaz de la Aplicación ---
 
@@ -79,7 +62,7 @@ with st.container(border=True):
     st.header("Paso 1: Generar la Lista de Actividades a partir de Entrevistas")
     
     files_entrevistas = st.file_uploader(
-        "Sube uno o más archivos de entrevistas (.txt, .pdf, .docx)",
+        "Sube uno o más archivos de entrevistas",
         type=["txt", "pdf", "docx"],
         accept_multiple_files=True
     )
@@ -89,102 +72,112 @@ with st.container(border=True):
             with st.spinner("Analizando entrevistas y generando la lista..."):
                 texto_entrevistas = ""
                 for file in files_entrevistas:
-                    texto_entrevistas += get_content_from_file(file) + "\n\n---\n\n"
+                    content = get_content_from_file(file)
+                    if content: texto_entrevistas += content + "\n\n---\n\n"
                 
                 st.session_state['texto_entrevistas'] = texto_entrevistas
-
-                full_prompt = f"{prompt_actividades}\n\n--- INICIO ENTREVISTAS ---\n{texto_entrevistas}\n--- FIN ENTREVISTAS ---"
                 
                 try:
-                    # CORRECCIÓN 1: Usamos el nombre de modelo estándar
                     model = genai.GenerativeModel('gemini-2.5-flash')
-                    response = model.generate_content(full_prompt)
+                    response = model.generate_content(f"{prompt_actividades}\n\n--- ENTREVISTAS ---\n{texto_entrevistas}")
                     
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
                     json_data = json.loads(cleaned_response)
-                    df_resultado = pd.DataFrame(json_data)
+                    df_actividades = pd.DataFrame(json_data)
                     
-                    st.session_state['df_actividades'] = df_resultado
-                    st.success("¡Lista de actividades generada con éxito!")
-                    st.dataframe(df_resultado)
+                    st.session_state['df_actividades'] = df_actividades
+                    st.success("¡Paso 1 completado! Lista de actividades generada.")
+                    st.dataframe(df_actividades)
 
-                except Exception as e:
-                    st.error(f"Ocurrió un error al generar la lista: {e}")
+                except Exception as e: st.error(f"Ocurrió un error en el Paso 1: {e}")
+        else: st.warning("Por favor, sube al menos un archivo de entrevista.")
 
-# --- PASO 2: GENERAR MATRIZ PUO ---
+
+# --- PASO 2: GENERAR MATRIZ DE RESPONSABILIDADES ---
 if 'df_actividades' in st.session_state:
     with st.container(border=True):
-        st.header("Paso 2: Generar la Matriz PUO (Problema-Usuario-Objetivo)")
-        st.write("Ahora, basándonos en las entrevistas y la lista de actividades generada, crearemos la matriz de diagnóstico.")
+        st.header("Paso 2: Generar la Matriz de Responsabilidades")
         
         file_organigrama = st.file_uploader(
             "Sube el organigrama (Opcional)",
             type=["jpg", "jpeg", "png", "pdf", "docx", "txt", "xlsx", "xls", "csv"]
         )
 
-        prompt_puo = st.text_area(
-            "Prompt para generar la Matriz PUO:",
-            height=200,
-            value="""Basándote en las entrevistas y la lista de actividades proporcionada, crea una Matriz PUO en formato JSON.
+        # CAMBIO: Usamos tu prompt adaptado como valor por defecto
+        prompt_responsabilidades = st.text_area(
+            "Prompt para generar la Matriz de Responsabilidades:",
+            height=300,
+            value="""**Objetivo Principal:**
+Crear una matriz de responsabilidades en formato JSON. Debes usar la lista de actividades proporcionada como base y rellenarla usando la información de las entrevistas.
 
-Para cada actividad de la lista, analiza las entrevistas para:
-1.  **Identificar un Problema:** ¿Qué dificultad, ineficiencia o dolor se menciona en relación a esa actividad? Si no se menciona ninguno, déjalo en blanco.
-2.  **Identificar el Usuario Afectado:** ¿Qué rol o puesto (según el organigrama si se proporciona, o las entrevistas si no) sufre más por este problema?
-3.  **Definir un Objetivo:** Propón un objetivo claro y medible para solucionar el problema.
+**Bloques de Información que Analizarás:**
+1.  **LISTA DE ACTIVIDADES:** Contiene las filas base de la matriz con las columnas "Proceso", "Número" y "Grandes actividades del proceso". Debes mantener estas columnas en tu salida.
+2.  **ENTREVISTAS:** Es tu única fuente de verdad para identificar quién hace qué.
+3.  **ORGANIGRAMA (Opcional):** Puedes usarlo como referencia para confirmar puestos de trabajo.
 
-**Formato de Salida:**
-*   **Exclusivamente JSON.**
-*   Una lista de objetos, donde cada objeto tiene las claves: "Actividad", "Problema Detectado", "Usuario Afectado", "Objetivo de Mejora"."""
+**Instrucciones Detalladas:**
+1.  **Identifica las Columnas de Puestos:**
+    *   Lee las entrevistas e identifica todos los puestos de trabajo y las personas asociadas.
+    *   El nombre de cada nueva columna en tu matriz debe seguir el formato: 'Puesto (Nombre Persona)'. Por ejemplo, 'Director Comercial (Juan Pérez)'.
+    *   Si un puesto es mencionado sin un nombre, usa solo el 'Puesto'.
+2.  **Construye la Matriz de Salida:**
+    *   Tu JSON de salida debe ser una lista de objetos.
+    *   Cada objeto debe PRESERVAR las claves originales ("Proceso", "Número", "Grandes actividades del proceso") de la lista de actividades que te he pasado.
+    *   Añade a cada objeto las nuevas claves para cada 'Puesto (Nombre Persona)' que hayas identificado. Solo deben aparecer las personas a las que se hizo la entrevista.
+3.  **Asignación de Responsabilidades:**
+    *   Para cada actividad, marca con una 'X' en la columna del puesto correspondiente si la entrevista menciona que esa persona/puesto realiza la tarea.
+    *   Si un puesto no tiene nada que ver con una actividad, el valor debe ser un guion ('-').
+    *   Si varios puestos participan en una actividad, marca una 'X' para CADA UNO de ellos.
+
+**Formato de Salida Requerido:**
+*   **Exclusivamente JSON.** No incluyas explicaciones ni texto adicional.
+*   El JSON debe ser una lista de objetos, donde cada objeto es una fila completa de la matriz."""
         )
 
-        if st.button("Generar Matriz PUO", type="primary"):
-            with st.spinner("Creando la Matriz PUO..."):
+        if st.button("Generar Matriz de Responsabilidades", type="primary"):
+            with st.spinner("Creando la Matriz de Responsabilidades..."):
                 texto_entrevistas = st.session_state['texto_entrevistas']
                 actividades_json = st.session_state['df_actividades'].to_json(orient='records')
                 
                 prompt_parts = [
-                    prompt_puo,
-                    "\n\n--- LISTA DE ACTIVIDADES BASE ---\n",
-                    actividades_json,
-                    "\n\n--- TRANSCRIPCIONES DE ENTREVISTAS ---\n",
-                    texto_entrevistas
+                    prompt_responsabilidades,
+                    "\n\n--- LISTA DE ACTIVIDADES ---\n", actividades_json,
+                    "\n\n--- ENTREVISTAS ---\n", texto_entrevistas
                 ]
 
                 if file_organigrama:
                     contenido_organigrama = get_content_from_file(file_organigrama)
                     if contenido_organigrama:
-                        prompt_parts.append("\n\n--- ORGANIGRAMA DE REFERENCIA ---\n")
-                        prompt_parts.append(contenido_organigrama)
+                        prompt_parts.extend(["\n\n--- ORGANIGRAMA ---\n", contenido_organigrama])
 
                 try:
-                    # CORRECCIÓN 2: Usamos el nombre de modelo correcto aquí también
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(prompt_parts)
 
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
                     json_data = json.loads(cleaned_response)
-                    df_puo = pd.DataFrame(json_data)
+                    df_responsabilidades = pd.DataFrame(json_data)
+                    df_responsabilidades.fillna('-', inplace=True)
 
-                    st.session_state['df_puo'] = df_puo
-                    st.success("¡Matriz PUO generada con éxito!")
-                    st.dataframe(df_puo)
+                    st.session_state['df_responsabilidades'] = df_responsabilidades
+                    st.success("¡Paso 2 completado! Matriz de responsabilidades generada.")
+                    st.dataframe(df_responsabilidades)
 
-                except Exception as e:
-                    st.error(f"Ocurrió un error al generar la Matriz PUO: {e}")
+                except Exception as e: st.error(f"Ocurrió un error en el Paso 2: {e}")
 
 # --- PASO 3: DESCARGA ---
-if 'df_actividades' in st.session_state and 'df_puo' in st.session_state:
+if 'df_actividades' in st.session_state and 'df_responsabilidades' in st.session_state:
     with st.container(border=True):
         st.header("Paso 3: Descargar Resultados")
         
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             st.session_state['df_actividades'].to_excel(writer, sheet_name='Lista_Actividades', index=False)
-            st.session_state['df_puo'].to_excel(writer, sheet_name='Matriz_PUO', index=False)
+            st.session_state['df_responsabilidades'].to_excel(writer, sheet_name='Matriz_Responsabilidades', index=False)
         
         st.download_button(
             label="📥 Descargar Análisis Completo en Excel",
             data=output.getvalue(),
             file_name="analisis_de_procesos.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.sheet"
         )
