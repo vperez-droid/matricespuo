@@ -69,21 +69,37 @@ prompt_actividades = """
 *   Tu respuesta debe ser **EXCLUSIVAMENTE un array JSON válido** que contenga los objetos.
 *   No incluyas texto introductorio, explicaciones, ni la palabra "json" o las marcas ```.
 *   La salida debe empezar con `[` y terminar con `]`.
-
-**Ejemplo de cómo debe ser la salida:**
-[
-  {
-    "Proceso": "Captación de Clientes y Gestión de Leads",
-    "Número": 1,
-    "Grandes actividades del proceso": "Actuar como primer filtro para determinar la viabilidad y perfil del cliente."
-  },
-  {
-    "Proceso": "Captación de Clientes y Gestión de Leads",
-    "Número": 2,
-    "Grandes actividades del proceso": "Obtener la documentación solicitada al cliente."
-  }
-]
 """
+
+# --- CAMBIO 2: Movemos el prompt del Paso 2 aquí para que sea fijo ---
+prompt_responsabilidades = """
+**Objetivo Principal:**
+Crear una matriz de responsabilidades en formato JSON. Debes usar la lista de actividades proporcionada como base y rellenarla usando la información de las entrevistas.
+
+**Bloques de Información que Analizarás:**
+1.  **LISTA DE ACTIVIDADES:** Contiene las filas base de la matriz con las columnas "Proceso", "Número" y "Grandes actividades del proceso". Debes mantener estas columnas en tu salida.
+2.  **ENTREVISTAS:** Es tu única fuente de verdad para identificar quién hace qué.
+3.  **ORGANIGRAMA (Opcional):** Puedes usarlo como referencia para confirmar puestos de trabajo.
+
+**Instrucciones Detalladas:**
+1.  **Identifica las Columnas de Puestos:**
+    *   Lee las entrevistas e identifica todos los puestos de trabajo y las personas asociadas.
+    *   El nombre de cada nueva columna en tu matriz debe seguir el formato: 'Puesto (Nombre Persona)'. Por ejemplo, 'Director Comercial (Juan Pérez)'.
+    *   Si un puesto es mencionado sin un nombre, usa solo el 'Puesto'.
+2.  **Construye la Matriz de Salida:**
+    *   Tu JSON de salida debe ser una lista de objetos.
+    *   Cada objeto debe PRESERVAR las claves originales ("Proceso", "Número", "Grandes actividades del proceso") de la lista de actividades que te he pasado.
+    *   Añade a cada objeto las nuevas claves para cada 'Puesto (Nombre Persona)' que hayas identificado. Solo deben aparecer las personas a las que se hizo la entrevista.
+3.  **Asignación de Responsabilidades:**
+    *   Para cada actividad, marca con una 'X' en la columna del puesto correspondiente si la entrevista menciona que esa persona/puesto realiza la tarea.
+    *   Si un puesto no tiene nada que ver con una actividad, el valor debe ser un guion ('-').
+    *   Si varios puestos participan en una actividad, marca una 'X' para CADA UNO de ellos.
+
+**Formato de Salida Requerido:**
+*   **Exclusivamente JSON.** No incluyas explicaciones ni texto adicional.
+*   El JSON debe ser una lista de objetos, donde cada objeto es una fila completa de la matriz.
+"""
+
 
 # --- Interfaz de la Aplicación ---
 
@@ -111,13 +127,12 @@ with st.container(border=True):
                     model = genai.GenerativeModel('gemini-2.5-flash')
                     response = model.generate_content(f"{prompt_actividades}\n\n--- ENTREVISTAS ---\n{texto_entrevistas}")
                     
-                    # CAMBIO 1: Mostrar la respuesta cruda del modelo para depuración
-                    st.info("Respuesta recibida del modelo:")
-                    st.text(response.text)
+                    # --- CAMBIO 1: Eliminamos la respuesta en crudo que usábamos para depurar ---
+                    # st.info("Respuesta recibida del modelo:")
+                    # st.text(response.text)
 
                     cleaned_response = response.text.strip().replace("```json", "").replace("```", "")
                     
-                    # CAMBIO 2: Verificar si la respuesta está vacía antes de intentar procesarla
                     if not cleaned_response:
                         st.error("Error: El modelo devolvió una respuesta vacía.")
                     else:
@@ -128,10 +143,9 @@ with st.container(border=True):
                         st.success("¡Paso 1 completado! Lista de actividades generada.")
                         st.dataframe(df_actividades)
 
-                # CAMBIO 3: Capturar el error de JSON de forma más específica
                 except json.JSONDecodeError as e:
                     st.error(f"Error al procesar el JSON: {e}")
-                    st.error("La respuesta del modelo (mostrada arriba) no es un JSON válido.")
+                    st.error("La respuesta del modelo no es un JSON válido.")
                 except Exception as e: 
                     st.error(f"Ocurrió un error inesperado en el Paso 1: {e}")
         else: 
@@ -148,36 +162,7 @@ if 'df_actividades' in st.session_state:
             type=["jpg", "jpeg", "png", "pdf", "docx", "txt", "xlsx", "xls", "csv"]
         )
 
-        # CAMBIO: Usamos tu prompt adaptado como valor por defecto
-        prompt_responsabilidades = st.text_area(
-            "Prompt para generar la Matriz de Responsabilidades:",
-            height=300,
-            value="""**Objetivo Principal:**
-Crear una matriz de responsabilidades en formato JSON. Debes usar la lista de actividades proporcionada como base y rellenarla usando la información de las entrevistas.
-
-**Bloques de Información que Analizarás:**
-1.  **LISTA DE ACTIVIDADES:** Contiene las filas base de la matriz con las columnas "Proceso", "Número" y "Grandes actividades del proceso". Debes mantener estas columnas en tu salida.
-2.  **ENTREVISTAS:** Es tu única fuente de verdad para identificar quién hace qué.
-3.  **ORGANIGRAMA (Opcional):** Puedes usarlo como referencia para confirmar puestos de trabajo.
-
-**Instrucciones Detalladas:**
-1.  **Identifica las Columnas de Puestos:**
-    *   Lee las entrevistas e identifica todos los puestos de trabajo y las personas asociadas.
-    *   El nombre de cada nueva columna en tu matriz debe seguir el formato: 'Puesto (Nombre Persona)'. Por ejemplo, 'Director Comercial (Juan Pérez)'.
-    *   Si un puesto es mencionado sin un nombre, usa solo el 'Puesto'.
-2.  **Construye la Matriz de Salida:**
-    *   Tu JSON de salida debe ser una lista de objetos.
-    *   Cada objeto debe PRESERVAR las claves originales ("Proceso", "Número", "Grandes actividades del proceso") de la lista de actividades que te he pasado.
-    *   Añade a cada objeto las nuevas claves para cada 'Puesto (Nombre Persona)' que hayas identificado. Solo deben aparecer las personas a las que se hizo la entrevista.
-3.  **Asignación de Responsabilidades:**
-    *   Para cada actividad, marca con una 'X' en la columna del puesto correspondiente si la entrevista menciona que esa persona/puesto realiza la tarea.
-    *   Si un puesto no tiene nada que ver con una actividad, el valor debe ser un guion ('-').
-    *   Si varios puestos participan en una actividad, marca una 'X' para CADA UNO de ellos.
-
-**Formato de Salida Requerido:**
-*   **Exclusivamente JSON.** No incluyas explicaciones ni texto adicional.
-*   El JSON debe ser una lista de objetos, donde cada objeto es una fila completa de la matriz."""
-        )
+        # --- CAMBIO 2: Eliminamos el st.text_area para que el prompt no sea visible/editable ---
 
         if st.button("Generar Matriz de Responsabilidades", type="primary"):
             with st.spinner("Creando la Matriz de Responsabilidades..."):
@@ -185,7 +170,7 @@ Crear una matriz de responsabilidades en formato JSON. Debes usar la lista de ac
                 actividades_json = st.session_state['df_actividades'].to_json(orient='records')
                 
                 prompt_parts = [
-                    prompt_responsabilidades,
+                    prompt_responsabilidades, # Ahora usa la variable fija definida arriba
                     "\n\n--- LISTA DE ACTIVIDADES ---\n", actividades_json,
                     "\n\n--- ENTREVISTAS ---\n", texto_entrevistas
                 ]
